@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Board } from '../src/board';
-import { EMPTY, generateLevel, numberShape, scaleFor } from '../src/levelGen';
+import { EMPTY, SCALE, generateLevel, numberShape } from '../src/levelGen';
 
 describe('generateLevel', () => {
   it('draws the level number as its shape', () => {
     for (const n of [1, 7, 42, 108, 1234]) {
       const level = generateLevel(n);
-      const shape = numberShape(n, scaleFor(n));
+      const shape = numberShape(n, SCALE);
       expect(Array.from(level.cells, (c) => c !== EMPTY)).toEqual(shape.filled);
     }
   });

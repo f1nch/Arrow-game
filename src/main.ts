@@ -105,9 +105,8 @@ overlay.addEventListener('click', (e) => {
   }
 });
 
-canvas.addEventListener('pointerdown', (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const cell = renderer.cellAt(board, e.clientX - rect.left, e.clientY - rect.top);
+function handleTap(sx: number, sy: number): void {
+  const cell = renderer.cellAt(board, sx, sy);
   if (!cell) return;
   const res = board.tap(cell.x, cell.y);
   const now = performance.now();
@@ -124,7 +123,67 @@ canvas.addEventListener('pointerdown', (e) => {
     if (board.lost) setTimeout(showLose, 400);
   }
   updateHud();
+}
+
+// Gestures: a quick single-finger touch taps, dragging pans, two fingers pinch-zoom.
+const TAP_SLOP = 8;
+const pointers = new Map<number, { x: number; y: number }>();
+let tapStart: { x: number; y: number } | null = null;
+
+function localPoint(e: PointerEvent | WheelEvent): { x: number; y: number } {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function pinchInfo(): { mid: { x: number; y: number }; dist: number } {
+  const [a, b] = [...pointers.values()];
+  return { mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, dist: Math.hypot(a.x - b.x, a.y - b.y) };
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  const p = localPoint(e);
+  pointers.set(e.pointerId, p);
+  // Only a gesture that starts and stays as one finger counts as a tap.
+  tapStart = pointers.size === 1 ? p : null;
 });
+
+canvas.addEventListener('pointermove', (e) => {
+  const prev = pointers.get(e.pointerId);
+  if (!prev) return;
+  const p = localPoint(e);
+  if (pointers.size === 2) {
+    const before = pinchInfo();
+    pointers.set(e.pointerId, p);
+    const after = pinchInfo();
+    if (before.dist > 0) renderer.zoomAt(after.dist / before.dist, after.mid.x, after.mid.y);
+    renderer.panBy(after.mid.x - before.mid.x, after.mid.y - before.mid.y);
+    return;
+  }
+  pointers.set(e.pointerId, p);
+  if (pointers.size !== 1) return;
+  if (tapStart && Math.hypot(p.x - tapStart.x, p.y - tapStart.y) > TAP_SLOP) tapStart = null;
+  if (!tapStart) renderer.panBy(p.x - prev.x, p.y - prev.y);
+});
+
+function endPointer(e: PointerEvent, cancelled: boolean): void {
+  if (!pointers.delete(e.pointerId)) return;
+  if (!cancelled && tapStart && pointers.size === 0) handleTap(tapStart.x, tapStart.y);
+  if (pointers.size === 0) tapStart = null;
+}
+
+canvas.addEventListener('pointerup', (e) => endPointer(e, false));
+canvas.addEventListener('pointercancel', (e) => endPointer(e, true));
+
+canvas.addEventListener(
+  'wheel',
+  (e) => {
+    e.preventDefault();
+    const p = localPoint(e);
+    renderer.zoomAt(Math.exp(-e.deltaY * 0.002), p.x, p.y);
+  },
+  { passive: false },
+);
 
 $('menu-btn').addEventListener('click', showLevels);
 $('hint-btn').addEventListener('click', () => {

@@ -18,6 +18,14 @@ export class Renderer {
   private oy = 0;
   private cssW = 0;
   private cssH = 0;
+  private dpr = 1;
+  private boardW = 0;
+  private boardH = 0;
+  // View transform for pinch-zoom: screen = base * zoom + (tx, ty).
+  private zoom = 1;
+  private maxZoom = 1;
+  private tx = 0;
+  private ty = 0;
   private flyers: Flyer[] = [];
   private bump: Bump | null = null;
   private hint: { index: number; start: number } | null = null;
@@ -50,21 +58,52 @@ export class Renderer {
     this.readTheme();
   }
 
-  /** Fit the board to the canvas size. Call on resize and level change. */
+  /** Fit the board to the canvas size and reset zoom. Call on resize and level change. */
   layout(board: Board): void {
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    this.dpr = window.devicePixelRatio || 1;
     this.cssW = rect.width;
     this.cssH = rect.height;
-    this.canvas.width = Math.round(rect.width * dpr);
-    this.canvas.height = Math.round(rect.height * dpr);
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.canvas.width = Math.round(rect.width * this.dpr);
+    this.canvas.height = Math.round(rect.height * this.dpr);
     this.cell = Math.min(64, Math.floor(Math.min(rect.width / (board.width + 2), rect.height / (board.height + 2))));
     this.ox = (rect.width - this.cell * board.width) / 2;
     this.oy = (rect.height - this.cell * board.height) / 2;
+    this.boardW = this.cell * board.width;
+    this.boardH = this.cell * board.height;
+    this.maxZoom = Math.max(1, 56 / this.cell);
+    this.zoom = 1;
+    this.tx = 0;
+    this.ty = 0;
   }
 
-  cellAt(board: Board, px: number, py: number): { x: number; y: number } | null {
+  /** Zoom by factor f, keeping screen point (sx, sy) fixed. */
+  zoomAt(f: number, sx: number, sy: number): void {
+    const z = Math.min(this.maxZoom, Math.max(1, this.zoom * f));
+    this.tx = sx - ((sx - this.tx) * z) / this.zoom;
+    this.ty = sy - ((sy - this.ty) * z) / this.zoom;
+    this.zoom = z;
+    this.clampPan();
+  }
+
+  panBy(dx: number, dy: number): void {
+    this.tx += dx;
+    this.ty += dy;
+    this.clampPan();
+  }
+
+  // Keep the board covering the middle of the screen so it can't be lost.
+  private clampPan(): void {
+    const z = this.zoom;
+    const cx = this.cssW / 2;
+    const cy = this.cssH / 2;
+    this.tx = Math.min(cx - this.ox * z, Math.max(cx - (this.ox + this.boardW) * z, this.tx));
+    this.ty = Math.min(cy - this.oy * z, Math.max(cy - (this.oy + this.boardH) * z, this.ty));
+  }
+
+  cellAt(board: Board, sx: number, sy: number): { x: number; y: number } | null {
+    const px = (sx - this.tx) / this.zoom;
+    const py = (sy - this.ty) / this.zoom;
     const x = Math.floor((px - this.ox) / this.cell);
     const y = Math.floor((py - this.oy) / this.cell);
     if (x < 0 || y < 0 || x >= board.width || y >= board.height) return null;
@@ -86,9 +125,11 @@ export class Renderer {
   }
 
   draw(board: Board, now: number): void {
-    const { ctx, cell, theme } = this;
+    const { ctx, cell, theme, dpr, zoom } = this;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = theme.bg;
     ctx.fillRect(0, 0, this.cssW, this.cssH);
+    ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * this.tx, dpr * this.ty);
 
     // Ghost of the number, so the shape stays visible as arrows leave.
     ctx.fillStyle = theme.ghost;

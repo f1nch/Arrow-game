@@ -22,13 +22,8 @@ export interface Shape {
   filled: boolean[];
 }
 
-/**
- * Stroke thickness in cells for a level. Multi-digit numbers stay at 1x so
- * cells remain big enough to tap on a phone; difficulty comes from hardness.
- */
-export function scaleFor(level: number): number {
-  return level >= 5 && level <= 9 ? 2 : 1;
-}
+/** Stroke thickness in cells, the same for every level. */
+export const SCALE = 2;
 
 /** Chance of picking the "hardest" arrow at each step of generation. */
 export function hardnessFor(level: number): number {
@@ -72,7 +67,7 @@ export function mulberry32(seed: number): () => number {
  * peel order forward always clears the board, so every level is solvable.
  */
 export function generateLevel(level: number): Level {
-  const { width, height, filled } = numberShape(level, scaleFor(level));
+  const { width, height, filled } = numberShape(level, SCALE);
   const rng = mulberry32(Math.imul(level, 2654435761) ^ 0x9e3779b9);
   const hardness = hardnessFor(level);
   const remaining = filled.slice();
@@ -82,31 +77,28 @@ export function generateLevel(level: number): Level {
   let left = remaining.filter(Boolean).length;
 
   while (left > 0) {
+    // A cell can leave in a direction only if it is the outermost remaining
+    // cell of its row/column on that side. Score = earlier arrows in its path.
     const options: { i: number; d: Dir; score: number }[] = [];
-    let best = -1;
-    for (let i = 0; i < remaining.length; i++) {
-      if (!remaining[i]) continue;
-      for (let d = 0; d < 4; d++) {
-        let x = (i % width) + DX[d];
-        let y = Math.floor(i / width) + DY[d];
-        let score = 0;
-        let clear = true;
-        while (x >= 0 && y >= 0 && x < width && y < height) {
-          const j = y * width + x;
-          if (remaining[j]) {
-            clear = false;
-            break;
-          }
-          score += peeled[j];
-          x += DX[d];
-          y += DY[d];
+    const scan = (start: number, step: number, count: number, d: Dir) => {
+      let score = 0;
+      for (let k = 0, j = start; k < count; k++, j += step) {
+        if (remaining[j]) {
+          options.push({ i: j, d, score });
+          return;
         }
-        if (clear) {
-          options.push({ i, d: d as Dir, score });
-          best = Math.max(best, score);
-        }
+        score += peeled[j];
       }
+    };
+    for (let y = 0; y < height; y++) {
+      scan(y * width, 1, width, 3);
+      scan(y * width + width - 1, -1, width, 1);
     }
+    for (let x = 0; x < width; x++) {
+      scan(x, width, height, 0);
+      scan((height - 1) * width + x, -width, height, 2);
+    }
+    const best = Math.max(...options.map((o) => o.score));
     // Harder levels favour arrows that depend on many earlier arrows.
     const pool = rng() < hardness ? options.filter((o) => o.score === best) : options;
     const pick = pool[Math.floor(rng() * pool.length)];
