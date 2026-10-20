@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#f6f4ef" />
+    <title>Number Arrows</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%E2%9E%A1%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <header class="bar">
+      <button id="menu-btn" class="icon-btn" aria-label="Levels">☰</button>
+      <div class="title">
+        <span id="level-label">Level 1</span>
+        <span id="hearts" class="hearts" aria-label="Hearts"></span>
+      </div>
+      <div class="actions">
+        <button id="hint-btn" class="icon-btn" aria-label="Hint">💡</button>
+        <button id="sound-btn" class="icon-btn" aria-label="Toggle sound">🔊</button>
+      </div>
+    </header>
+    <main class="stage">
+      <canvas id="board"></canvas>
+      <p id="arrows-left" class="arrows-left"></p>
+    </main>
+    <div id="overlay" class="overlay" hidden>
+      <div class="panel" id="panel"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

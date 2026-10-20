@@ -17,14 +17,10 @@ level 42 is a "42", and so on.
 1. Turn the level number into a string, e.g. `"42"`.
 2. Draw each digit from a small pixel font (5 wide × 7 tall per digit, 1 empty column between digits).
 3. Every "on" pixel becomes one arrow cell. Everything else is empty.
-4. Difficulty goes up by **scaling the font**: early levels use thin strokes (1 cell),
-   later levels use 2× or 3× strokes. That means more arrows and more blocking.
-
-| Levels | Stroke scale | Rough arrow count |
-|--------|--------------|-------------------|
-| 1–9    | 1×           | 7–20              |
-| 10–99  | 1× → 2×      | 25–80             |
-| 100+   | 2× → 3×      | 100–300           |
+4. Levels 5–9 use 2× strokes so single digits aren't trivial. Multi-digit
+   numbers stay at 1× so cells are big enough to tap on a phone.
+5. Difficulty mainly grows through how arrows are placed (see below):
+   later levels have longer chains of arrows that block each other.
 
 ## 3. Making every level solvable
 
