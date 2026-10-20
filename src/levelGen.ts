@@ -23,7 +23,7 @@ export interface Shape {
 }
 
 /** Stroke thickness in cells, the same for every level. */
-export const SCALE = 2;
+export const SCALE = 3;
 
 /** Chance of picking the "hardest" arrow at each step of generation. */
 export function hardnessFor(level: number): number {
