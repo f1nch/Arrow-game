@@ -19,10 +19,46 @@ const renderer = new Renderer(canvas);
 const progress = loadProgress();
 let board: Board;
 
+// Combos: arrows cleared in quick succession without a mistake.
+const COMBO_MS = 2000;
+const MILESTONES: Record<number, string> = { 5: 'Nice!', 10: 'Great!', 15: 'Amazing!', 20: 'Unstoppable!', 30: 'Legendary!' };
+const comboEl = $('combo');
+const comboText = $('combo-text');
+let combo = 0;
+let bestCombo = 0;
+let lastExit = 0;
+let comboTimer = 0;
+
+function resetCombo(): void {
+  combo = 0;
+  clearTimeout(comboTimer);
+  comboEl.hidden = true;
+}
+
+function bumpCombo(now: number): void {
+  combo = now - lastExit < COMBO_MS ? combo + 1 : 1;
+  lastExit = now;
+  bestCombo = Math.max(bestCombo, combo);
+  clearTimeout(comboTimer);
+  if (combo < 2) {
+    comboEl.hidden = true;
+    return;
+  }
+  comboText.textContent = `Combo ×${combo}`;
+  comboEl.hidden = false;
+  // Restart the draining bar animation.
+  comboEl.classList.remove('live');
+  void comboEl.offsetWidth;
+  comboEl.classList.add('live');
+  comboTimer = window.setTimeout(resetCombo, COMBO_MS);
+}
+
 function startLevel(n: number): void {
   progress.current = n;
   saveProgress(progress);
   board = new Board(generateLevel(n));
+  resetCombo();
+  bestCombo = 0;
   renderer.setLevel(n);
   renderer.layout(board);
   hideOverlay();
@@ -50,10 +86,13 @@ function showWin(): void {
   const n = progress.current;
   progress.unlocked = Math.max(progress.unlocked, n + 1);
   saveProgress(progress);
-  sfx.win();
+  const stars = Array.from({ length: MAX_HEARTS }, (_, i) =>
+    `<span class="star ${i < board.hearts ? 'on' : ''}" style="animation-delay:${0.15 + i * 0.18}s">★</span>`,
+  ).join('');
   showOverlay(`
+    <div class="stars">${stars}</div>
     <h2>Level ${n} cleared!</h2>
-    <p>${board.hearts === MAX_HEARTS ? 'Perfect — no hearts lost.' : 'Nice work.'}</p>
+    <p>${board.hearts === MAX_HEARTS ? 'Perfect — no hearts lost!' : 'Nice work.'}${bestCombo >= 2 ? `<br>Best combo <strong>×${bestCombo}</strong>` : ''}</p>
     <button class="big-btn" data-action="next">Level ${n + 1} →</button>
     <button class="big-btn secondary" data-action="levels">All levels</button>
   `);
@@ -112,10 +151,25 @@ function handleTap(sx: number, sy: number): void {
   const now = performance.now();
   if (res.kind === 'exit') {
     renderer.addFlyer(board, res.index, res.dir, now);
-    sfx.exit();
-    if (board.won) setTimeout(showWin, 450);
+    bumpCombo(now);
+    renderer.burst(board, res.index, res.dir, combo, now);
+    renderer.popup(board, res.index, combo >= 2 ? `×${combo}` : '+1', combo, now);
+    sfx.exit(combo);
+    const milestone = MILESTONES[combo] ?? (combo > 30 && combo % 10 === 0 ? 'Legendary!' : null);
+    if (milestone) {
+      renderer.showBanner(milestone, now);
+      sfx.combo();
+    }
+    if (board.won) {
+      resetCombo();
+      renderer.showBanner(board.hearts === MAX_HEARTS ? 'Perfect!' : 'Cleared!', now);
+      renderer.confetti(now);
+      sfx.win();
+      setTimeout(showWin, 1100);
+    }
   } else if (res.kind === 'blocked') {
     renderer.addBump(board, res.index, res.dir, res.blocker, now);
+    resetCombo();
     sfx.bump();
     heartsEl.classList.remove('shake');
     void heartsEl.offsetWidth;

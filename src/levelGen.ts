@@ -27,7 +27,7 @@ export const SCALE = 2;
 
 /** Chance of picking the "hardest" arrow at each step of generation. */
 export function hardnessFor(level: number): number {
-  return Math.min(0.9, 0.15 + level / 150);
+  return Math.min(0.95, 0.4 + level / 80);
 }
 
 /** The level number drawn as a grid of filled cells. */

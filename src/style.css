@@ -207,6 +207,91 @@ body {
   cursor: default;
 }
 
+.combo {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  font-weight: 900;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.combo[hidden] {
+  display: none;
+}
+
+.combo.live #combo-text {
+  animation: combo-pop 0.25s ease-out;
+}
+
+.combo-bar {
+  display: block;
+  width: 90px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--accent);
+  transform-origin: left;
+}
+
+.combo.live .combo-bar {
+  animation: drain 2s linear forwards;
+}
+
+@keyframes combo-pop {
+  from {
+    transform: scale(1.5);
+  }
+}
+
+@keyframes drain {
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.stars {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.star {
+  color: var(--muted);
+  opacity: 0.3;
+  display: inline-block;
+  animation: star-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.star.on {
+  color: var(--hint);
+  opacity: 1;
+  text-shadow: 0 0 12px var(--hint);
+}
+
+@keyframes star-in {
+  from {
+    transform: scale(0) rotate(-90deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star,
+  .combo.live #combo-text,
+  .panel,
+  .shake {
+    animation: none;
+  }
+}
+
 @keyframes pop {
   from {
     transform: scale(0.9);
