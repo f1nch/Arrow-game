@@ -29,9 +29,6 @@ export interface Shape {
 /** Stroke thickness in cells, the same for every level. */
 export const SCALE = 3;
 
-/** Levels that use long, multi-cell arrows. */
-export const LONG_ARROW_LEVELS = new Set([10]);
-
 /** Chance of picking the "hardest" arrow at each step of generation. */
 export function hardnessFor(level: number): number {
   return Math.min(0.95, 0.4 + level / 80);
@@ -174,7 +171,7 @@ export function generateLevel(level: number): Level {
   return generate(numberShape(level, SCALE), {
     seed: Math.imul(level, 2654435761) ^ 0x9e3779b9,
     hardness: hardnessFor(level),
-    long: LONG_ARROW_LEVELS.has(level),
+    long: true,
   });
 }
 

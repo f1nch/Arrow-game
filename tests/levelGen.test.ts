@@ -72,13 +72,13 @@ describe('generateLevel', () => {
     }
   });
 
-  it('uses long arrows on level 10 only', () => {
+  it('uses long arrows on every level except the tutorial', () => {
     const avg = (n: number) => {
       const { arrows } = generateLevel(n);
       return arrows.reduce((t, a) => t + a.path.length, 0) / arrows.length;
     };
-    expect(avg(10)).toBeGreaterThan(2.5);
-    expect(avg(11)).toBe(1);
+    for (const n of [1, 7, 10, 42, 250]) expect(avg(n), `level ${n}`).toBeGreaterThan(2.5);
+    expect(avg(0)).toBe(1);
   });
 
   it('keeps the tutorial small', () => {
