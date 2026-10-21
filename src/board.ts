@@ -1,27 +1,39 @@
-import { DX, DY, Dir, EMPTY, Level } from './levelGen';
+import { Arrow, DX, DY, Dir, Level } from './levelGen';
 
 export const MAX_HEARTS = 3;
+const NONE = -1;
 
 export type TapResult =
   | { kind: 'none' }
-  | { kind: 'exit'; index: number; dir: Dir }
-  | { kind: 'blocked'; index: number; dir: Dir; blocker: number };
+  | { kind: 'exit'; arrow: number; head: number; dir: Dir }
+  | { kind: 'blocked'; arrow: number; head: number; dir: Dir; blocker: number };
+
+export interface BoardOptions {
+  /** Mistakes don't cost hearts (used by the tutorial). */
+  forgiving?: boolean;
+}
 
 export class Board {
   readonly width: number;
   readonly height: number;
-  readonly cells: Int8Array;
-  /** Cells that were part of the number at the start (for the ghost outline). */
+  readonly arrows: Arrow[];
+  /** Cells that were part of the shape at the start (for the ghost outline). */
   readonly shape: boolean[];
+  /** Which arrow covers each cell, or -1. */
+  readonly owner: Int16Array;
+  readonly forgiving: boolean;
   hearts = MAX_HEARTS;
   left: number;
 
-  constructor(level: Level) {
+  constructor(level: Level, { forgiving = false }: BoardOptions = {}) {
     this.width = level.width;
     this.height = level.height;
-    this.cells = level.cells.slice();
-    this.shape = Array.from(this.cells, (c) => c !== EMPTY);
-    this.left = this.shape.filter(Boolean).length;
+    this.arrows = level.arrows;
+    this.shape = level.shape;
+    this.forgiving = forgiving;
+    this.owner = new Int16Array(level.width * level.height).fill(NONE);
+    level.arrows.forEach((a, k) => a.path.forEach((i) => (this.owner[i] = k)));
+    this.left = level.arrows.length;
   }
 
   get won(): boolean {
@@ -32,16 +44,20 @@ export class Board {
     return this.hearts <= 0;
   }
 
-  /** First arrow in the path of cell i, or -1 when the path is clear. */
-  blockerOf(i: number): number {
-    const d = this.cells[i];
-    let x = (i % this.width) + DX[d];
-    let y = Math.floor(i / this.width) + DY[d];
+  alive(arrow: number): boolean {
+    return this.owner[this.arrows[arrow].path[0]] === arrow;
+  }
+
+  /** First occupied cell in front of an arrow's head, or -1 when the way is clear. */
+  blockerOf(arrow: number): number {
+    const { dir, path } = this.arrows[arrow];
+    let x = (path[0] % this.width) + DX[dir];
+    let y = Math.floor(path[0] / this.width) + DY[dir];
     while (x >= 0 && y >= 0 && x < this.width && y < this.height) {
       const j = y * this.width + x;
-      if (this.cells[j] !== EMPTY) return j;
-      x += DX[d];
-      y += DY[d];
+      if (this.owner[j] !== NONE) return j;
+      x += DX[dir];
+      y += DY[dir];
     }
     return -1;
   }
@@ -49,23 +65,23 @@ export class Board {
   tap(x: number, y: number): TapResult {
     if (this.won || this.lost) return { kind: 'none' };
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return { kind: 'none' };
-    const index = y * this.width + x;
-    const dir = this.cells[index];
-    if (dir === EMPTY) return { kind: 'none' };
-    const blocker = this.blockerOf(index);
+    const arrow = this.owner[y * this.width + x];
+    if (arrow === NONE) return { kind: 'none' };
+    const { dir, path } = this.arrows[arrow];
+    const blocker = this.blockerOf(arrow);
     if (blocker !== -1) {
-      this.hearts--;
-      return { kind: 'blocked', index, dir: dir as Dir, blocker };
+      if (!this.forgiving) this.hearts--;
+      return { kind: 'blocked', arrow, head: path[0], dir, blocker };
     }
-    this.cells[index] = EMPTY;
+    for (const i of path) this.owner[i] = NONE;
     this.left--;
-    return { kind: 'exit', index, dir: dir as Dir };
+    return { kind: 'exit', arrow, head: path[0], dir };
   }
 
   /** An arrow that can leave right now, or -1. */
   hint(): number {
-    for (let i = 0; i < this.cells.length; i++) {
-      if (this.cells[i] !== EMPTY && this.blockerOf(i) === -1) return i;
+    for (let k = 0; k < this.arrows.length; k++) {
+      if (this.alive(k) && this.blockerOf(k) === -1) return k;
     }
     return -1;
   }

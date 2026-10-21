@@ -1,5 +1,5 @@
 import { Board } from './board';
-import { DX, DY, Dir, EMPTY } from './levelGen';
+import { DX, DY, Dir } from './levelGen';
 
 const FLY_MS = 450;
 const BUMP_MS = 320;
@@ -11,8 +11,10 @@ const GRAVITY = 1800; // px/s² in screen space; scaled by cell size on the boar
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-interface Flyer { x: number; y: number; dir: Dir; start: number }
-interface Bump { index: number; dir: Dir; reach: number; blocker: number; start: number }
+type Point = [number, number];
+/** An arrow leaving the board; pts are cell centres from tail to head. */
+interface Flyer { pts: Point[]; dir: Dir; start: number }
+interface Bump { arrow: number; dir: Dir; reach: number; blocker: number; start: number }
 
 /** A spark or confetti piece. Board particles use board pixels; screen ones ignore zoom. */
 interface Particle {
@@ -42,7 +44,7 @@ export class Renderer {
   private ty = 0;
   private flyers: Flyer[] = [];
   private bump: Bump | null = null;
-  private hint: { index: number; start: number } | null = null;
+  private hint: { arrow: number; start: number; persistent: boolean } | null = null;
   private particles: Particle[] = [];
   private popups: Popup[] = [];
   private banner: Banner | null = null;
@@ -58,17 +60,19 @@ export class Renderer {
     const css = getComputedStyle(document.documentElement);
     const v = (name: string) => css.getPropertyValue(name).trim();
     const dark = v('--scheme') === 'dark';
+    // Colour themes set --arrow/--ghost; the classic theme tints each level.
     this.theme = {
       bg: v('--bg'),
-      ghost: dark ? `hsla(${this.hue}, 40%, 60%, 0.12)` : `hsla(${this.hue}, 50%, 45%, 0.1)`,
-      arrow: dark ? `hsl(${this.hue}, 70%, 68%)` : `hsl(${this.hue}, 65%, 38%)`,
+      ghost: v('--ghost') || (dark ? `hsla(${this.hue}, 40%, 60%, 0.12)` : `hsla(${this.hue}, 50%, 45%, 0.1)`),
+      arrow: v('--arrow') || (dark ? `hsl(${this.hue}, 70%, 68%)` : `hsl(${this.hue}, 65%, 38%)`),
       danger: v('--danger'),
       hint: v('--hint'),
     };
   }
 
-  setLevel(level: number): void {
-    this.hue = (level * 47 + 200) % 360;
+  /** Clear effects for a new board; seed picks the level's colour. */
+  reset(seed: number): void {
+    this.hue = (seed * 47 + 200) % 360;
     this.flyers = [];
     this.bump = null;
     this.hint = null;
@@ -130,14 +134,17 @@ export class Renderer {
     return { x, y };
   }
 
-  addFlyer(board: Board, index: number, dir: Dir, now: number): void {
-    this.flyers.push({ x: index % board.width, y: Math.floor(index / board.width), dir, start: now });
-    if (this.hint?.index === index) this.hint = null;
+  addFlyer(board: Board, arrow: number, now: number): void {
+    const { dir, path } = board.arrows[arrow];
+    this.flyers.push({ pts: this.centres(board, path), dir, start: now });
+    if (this.hint?.arrow === arrow) this.hint = null;
   }
 
-  addBump(board: Board, index: number, dir: Dir, blocker: number, now: number): void {
-    const dist = Math.abs((blocker % board.width) - (index % board.width)) + Math.abs(Math.floor(blocker / board.width) - Math.floor(index / board.width));
-    this.bump = { index, dir, reach: dist - 1 + 0.2, blocker, start: now };
+  addBump(board: Board, arrow: number, blocker: number, now: number): void {
+    const { dir, path } = board.arrows[arrow];
+    const head = path[0];
+    const dist = Math.abs((blocker % board.width) - (head % board.width)) + Math.abs(Math.floor(blocker / board.width) - Math.floor(head / board.width));
+    this.bump = { arrow, dir, reach: dist - 1 + 0.2, blocker: board.owner[blocker], start: now };
   }
 
   /** Sparks where an arrow left. Bigger and more colourful as the combo grows. */
@@ -188,8 +195,13 @@ export class Renderer {
     }
   }
 
-  showHint(index: number, now: number): void {
-    this.hint = { index, start: now };
+  /** Highlight an arrow; a persistent hint stays until cleared (used by the tutorial). */
+  showHint(arrow: number, now: number, persistent = false): void {
+    this.hint = { arrow, start: now, persistent };
+  }
+
+  clearHint(): void {
+    this.hint = null;
   }
 
   draw(board: Board, now: number): void {
@@ -208,49 +220,60 @@ export class Renderer {
       ctx.fill();
     }
 
-    if (this.hint && now - this.hint.start > HINT_MS) this.hint = null;
-    if (this.hint) {
+    if (this.hint && !this.hint.persistent && now - this.hint.start > HINT_MS) this.hint = null;
+    if (this.hint && board.alive(this.hint.arrow)) {
       const t = (now - this.hint.start) / HINT_MS;
-      const i = this.hint.index;
-      const [px, py] = this.pos(i % board.width, Math.floor(i / board.width));
       ctx.strokeStyle = theme.hint;
       ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * Math.PI * 6);
       ctx.lineWidth = Math.max(2, cell * 0.08);
-      roundRect(ctx, px + cell * 0.04, py + cell * 0.04, cell * 0.92, cell * 0.92, cell * 0.22);
-      ctx.stroke();
+      for (const i of board.arrows[this.hint.arrow].path) {
+        const [px, py] = this.pos(i % board.width, Math.floor(i / board.width));
+        roundRect(ctx, px + cell * 0.04, py + cell * 0.04, cell * 0.92, cell * 0.92, cell * 0.22);
+        ctx.stroke();
+      }
       ctx.globalAlpha = 1;
     }
 
     const bump = this.bump && now - this.bump.start < Math.max(BUMP_MS, FLASH_MS) ? this.bump : null;
     if (!bump) this.bump = null;
 
-    for (let i = 0; i < board.cells.length; i++) {
-      const d = board.cells[i];
-      if (d === EMPTY) continue;
-      let [px, py] = this.pos(i % board.width, Math.floor(i / board.width));
+    board.arrows.forEach(({ dir, path }, k) => {
+      if (!board.alive(k)) return;
+      let dx = 0;
+      let dy = 0;
       let color = theme.arrow;
-      if (bump && bump.index === i) {
+      if (bump && bump.arrow === k) {
         const t = Math.min(1, (now - bump.start) / BUMP_MS);
         const off = Math.sin(t * Math.PI) * bump.reach * cell;
-        px += DX[d] * off;
-        py += DY[d] * off;
+        dx = DX[dir] * off;
+        dy = DY[dir] * off;
         color = theme.danger;
-      } else if (bump && bump.blocker === i && now - bump.start < FLASH_MS) {
+      } else if (bump && bump.blocker === k && now - bump.start < FLASH_MS) {
         color = theme.danger;
       }
-      this.drawArrow(px, py, d as Dir, color, 1);
-    }
+      const pts = this.centres(board, path).map(([x, y]): Point => [x + dx, y + dy]);
+      this.drawSnake(pts, dir, color, 1);
+    });
 
     const travel = (board.width + board.height + 4) * cell;
     this.flyers = this.flyers.filter((f) => now - f.start < FLY_MS);
     for (const f of this.flyers) {
       const t = (now - f.start) / FLY_MS;
-      const [px, py] = this.pos(f.x, f.y);
-      // Fading trail behind the flying arrow.
-      for (let k = 3; k >= 0; k--) {
-        const tt = Math.max(0, t - k * 0.05);
-        const o = tt * tt * travel;
-        this.drawArrow(px + DX[f.dir] * o, py + DY[f.dir] * o, f.dir, theme.arrow, (1 - t) * (k === 0 ? 1 : 0.18));
+      if (f.pts.length === 1) {
+        // Fading trail behind a flying single arrow.
+        const [hx, hy] = f.pts[0];
+        for (let k = 3; k >= 0; k--) {
+          const tt = Math.max(0, t - k * 0.05);
+          const o = tt * tt * travel;
+          this.drawSnake([[hx + DX[f.dir] * o, hy + DY[f.dir] * o]], f.dir, theme.arrow, (1 - t) * (k === 0 ? 1 : 0.18));
+        }
+      } else {
+        // Long arrows slide along their own path, then straight out past the head.
+        const [hx, hy] = f.pts[f.pts.length - 1];
+        const track: Point[] = [...f.pts, [hx + DX[f.dir] * travel, hy + DY[f.dir] * travel]];
+        const len = (f.pts.length - 1) * cell;
+        const o = t * t * travel;
+        this.drawSnake(slicePath(track, o, o + len), f.dir, theme.arrow, 1 - t * t);
       }
     }
 
@@ -342,22 +365,47 @@ export class Renderer {
     return [this.ox + x * this.cell, this.oy + y * this.cell];
   }
 
-  private drawArrow(px: number, py: number, dir: Dir, color: string, alpha: number): void {
+  /** Cell centres for a path given head-first, returned tail-to-head. */
+  private centres(board: Board, path: number[]): Point[] {
+    const h = this.cell / 2;
+    return path
+      .map((i): Point => {
+        const [px, py] = this.pos(i % board.width, Math.floor(i / board.width));
+        return [px + h, py + h];
+      })
+      .reverse();
+  }
+
+  /**
+   * Draws an arrow through points (tail to head) with its head facing dir.
+   * A single point gets the classic short arrow inside its cell.
+   */
+  private drawSnake(pts: Point[], dir: Dir, color: string, alpha: number): void {
     const { ctx, cell } = this;
     const s = cell / 2;
+    const [hx, hy] = pts[pts.length - 1];
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.translate(px + s, py + s);
-    ctx.rotate((dir * Math.PI) / 2);
-    // Drawn pointing up; rotation turns it to face its direction.
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
     ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.lineWidth = s * 0.28;
-    ctx.beginPath();
-    ctx.moveTo(0, s * 0.62);
-    ctx.lineTo(0, -s * 0.1);
-    ctx.stroke();
+    if (pts.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (const [x, y] of pts.slice(1)) ctx.lineTo(x, y);
+      ctx.stroke();
+    }
+    ctx.translate(hx, hy);
+    ctx.rotate((dir * Math.PI) / 2);
+    // Drawn pointing up; rotation turns it to face its direction.
+    if (pts.length === 1) {
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.62);
+      ctx.lineTo(0, -s * 0.1);
+      ctx.stroke();
+    }
     ctx.beginPath();
     ctx.moveTo(0, -s * 0.7);
     ctx.lineTo(s * 0.5, -s * 0.05);
@@ -369,6 +417,31 @@ export class Renderer {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/** The part of a polyline between distances a and b along it. */
+function slicePath(pts: Point[], a: number, b: number): Point[] {
+  const out: Point[] = [];
+  let walked = 0;
+  for (let k = 1; k < pts.length; k++) {
+    const [x0, y0] = pts[k - 1];
+    const [x1, y1] = pts[k];
+    const seg = Math.hypot(x1 - x0, y1 - y0);
+    const at = (d: number): Point => {
+      const f = seg === 0 ? 0 : (d - walked) / seg;
+      return [x0 + (x1 - x0) * f, y0 + (y1 - y0) * f];
+    };
+    if (out.length === 0 && a <= walked + seg) out.push(at(Math.max(a, walked)));
+    if (out.length > 0) {
+      if (b <= walked + seg) {
+        out.push(at(b));
+        return out;
+      }
+      out.push([x1, y1]);
+    }
+    walked += seg;
+  }
+  return out.length > 0 ? out : [pts[pts.length - 1]];
 }
 
 function easeOutBack(t: number): number {
