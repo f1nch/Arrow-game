@@ -209,16 +209,15 @@ body {
 
 .combo {
   position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 4px;
+  left: 16px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 3px;
   pointer-events: none;
   font-weight: 900;
-  font-size: 1.1rem;
+  font-size: 0.95rem;
   color: var(--accent);
 }
 
@@ -227,13 +226,14 @@ body {
 }
 
 .combo.live #combo-text {
+  transform-origin: left center;
   animation: combo-pop 0.25s ease-out;
 }
 
 .combo-bar {
   display: block;
-  width: 90px;
-  height: 5px;
+  width: 72px;
+  height: 4px;
   border-radius: 3px;
   background: var(--accent);
   transform-origin: left;
