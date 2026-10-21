@@ -5,7 +5,7 @@ const FLY_MS = 450;
 const BUMP_MS = 320;
 const FLASH_MS = 400;
 const HINT_MS = 1600;
-const POPUP_MS = 900;
+const POPUP_MS = 650;
 const BANNER_MS = 1300;
 const GRAVITY = 1800; // px/s² in screen space; scaled by cell size on the board
 
@@ -165,10 +165,11 @@ export class Renderer {
   popup(board: Board, index: number, text: string, combo: number, now: number): void {
     const [px, py] = this.pos(index % board.width, Math.floor(index / board.width));
     const size = this.cell * Math.min(1, 0.55 + combo * 0.04);
-    this.popups.push({ x: px + this.cell / 2, y: py, text, start: now, size, color: `hsl(${(this.hue + combo * 25) % 360}, 85%, 55%)` });
+    // Start above the tapped cell so the number doesn't cover nearby arrows.
+    this.popups.push({ x: px + this.cell / 2, y: py - this.cell * 1.5, text, start: now, size, color: `hsl(${(this.hue + combo * 25) % 360}, 85%, 55%)` });
   }
 
-  /** Big centred message for combo milestones. */
+  /** Big centred message, used when a level is cleared. */
   showBanner(text: string, now: number): void {
     this.banner = { text, start: now, color: `hsl(${(this.hue + 180) % 360}, 85%, 55%)` };
   }
@@ -297,11 +298,11 @@ export class Renderer {
     for (const p of this.popups) {
       const t = (now - p.start) / POPUP_MS;
       const pop = t < 0.2 ? easeOutBack(t / 0.2) : 1;
-      ctx.globalAlpha = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+      ctx.globalAlpha = 0.9 * (t < 0.4 ? 1 : 1 - (t - 0.4) / 0.6);
       ctx.font = `800 ${p.size * pop}px system-ui, sans-serif`;
       ctx.lineWidth = p.size * 0.18;
       ctx.strokeStyle = this.theme.bg;
-      const y = p.y - t * this.cell * 1.2;
+      const y = p.y - t * this.cell * 2;
       ctx.strokeText(p.text, p.x, y);
       ctx.fillStyle = p.color;
       ctx.fillText(p.text, p.x, y);

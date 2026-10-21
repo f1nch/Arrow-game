@@ -24,6 +24,7 @@ const COMBO_MS = 2000;
 const MILESTONES: Record<number, string> = { 5: 'Nice!', 10: 'Great!', 15: 'Amazing!', 20: 'Unstoppable!', 30: 'Legendary!' };
 const comboEl = $('combo');
 const comboText = $('combo-text');
+const comboWord = $('combo-word');
 let combo = 0;
 let bestCombo = 0;
 let lastExit = 0;
@@ -31,6 +32,7 @@ let comboTimer = 0;
 
 function resetCombo(): void {
   combo = 0;
+  comboWord.classList.remove('show');
   clearTimeout(comboTimer);
   comboEl.hidden = true;
 }
@@ -157,7 +159,11 @@ function handleTap(sx: number, sy: number): void {
     sfx.exit(combo);
     const milestone = MILESTONES[combo] ?? (combo > 30 && combo % 10 === 0 ? 'Legendary!' : null);
     if (milestone) {
-      renderer.showBanner(milestone, now);
+      // Milestone word sits in the corner with the combo meter, off the board.
+      comboWord.textContent = milestone;
+      comboWord.classList.remove('show');
+      void comboWord.offsetWidth;
+      comboWord.classList.add('show');
       sfx.combo();
     }
     if (board.won) {
