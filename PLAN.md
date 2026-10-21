@@ -15,7 +15,8 @@ level 42 is a "42", and so on.
 ## 2. The twist: the level is its number
 
 1. Turn the level number into a string, e.g. `"42"`.
-2. Draw each digit from a small pixel font (5 wide × 7 tall per digit, 1 empty column between digits).
+2. Draw each digit from a small pixel font (5 wide × 7 tall), trimmed and packed so
+   neighbouring digits sit just one empty cell apart.
 3. Every "on" pixel becomes one arrow cell. Everything else is empty.
 4. Every level uses the same stroke thickness (3 cells), so bigger numbers
    mean bigger boards. Pinch to zoom and drag to pan when cells get small.

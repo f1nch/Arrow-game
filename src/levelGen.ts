@@ -34,26 +34,51 @@ export function hardnessFor(level: number): number {
   return Math.min(0.95, 0.4 + level / 80);
 }
 
+/** Filled cells of one line of digits, packed tightly: [x, y] pairs plus the line width. */
+function packLine(text: string, scale: number): { cells: [number, number][]; width: number } {
+  const cells: [number, number][] = [];
+  const taken = new Set<string>();
+  const near = (x: number, y: number) => {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (taken.has(`${x + dx},${y + dy}`)) return true;
+    return false;
+  };
+  let right = -1;
+  for (const ch of text) {
+    // Trim the font's empty side columns so thin digits like "1" don't leave gaps.
+    const cols = [...Array(DIGIT_W).keys()].filter((x) => [...Array(DIGIT_H).keys()].some((y) => digitPixel(ch, x, y)));
+    const glyph: [number, number][] = [];
+    for (let y = 0; y < DIGIT_H * scale; y++) {
+      for (let x = 0; x < (cols[cols.length - 1] - cols[0] + 1) * scale; x++) {
+        if (digitPixel(ch, cols[0] + Math.floor(x / scale), Math.floor(y / scale))) glyph.push([x, y]);
+      }
+    }
+    // Slide each digit left until only one empty cell separates it from the
+    // previous one (in any direction), overlapping their boxes by at most 2 font pixels.
+    let ox = right < 0 ? 0 : right + 2;
+    if (right >= 0) {
+      const fits = (o: number) => glyph.every(([x, y]) => !near(x + o, y));
+      while (ox - 1 >= right + 2 - 2 * scale && fits(ox - 1)) ox--;
+    }
+    for (const [x, y] of glyph) {
+      cells.push([x + ox, y]);
+      taken.add(`${x + ox},${y}`);
+      right = Math.max(right, x + ox);
+    }
+  }
+  return { cells, width: right + 1 };
+}
+
 /** Lines of digits drawn as a grid of filled cells; each line is centred. */
 export function digitsShape(lines: string[], scale: number): Shape {
   const gap = scale;
-  const lineW = (t: string) => t.length * DIGIT_W * scale + (t.length - 1) * gap;
-  const width = Math.max(...lines.map(lineW));
+  const packed = lines.map((t) => packLine(t, scale));
+  const width = Math.max(...packed.map((l) => l.width));
   const height = lines.length * DIGIT_H * scale + (lines.length - 1) * gap;
   const filled = new Array<boolean>(width * height).fill(false);
-  lines.forEach((text, row) => {
+  packed.forEach(({ cells, width: w }, row) => {
     const oy = row * (DIGIT_H * scale + gap);
-    const left = Math.floor((width - lineW(text)) / 2);
-    for (let d = 0; d < text.length; d++) {
-      const ox = left + d * (DIGIT_W * scale + gap);
-      for (let y = 0; y < DIGIT_H * scale; y++) {
-        for (let x = 0; x < DIGIT_W * scale; x++) {
-          if (digitPixel(text[d], Math.floor(x / scale), Math.floor(y / scale))) {
-            filled[(oy + y) * width + ox + x] = true;
-          }
-        }
-      }
-    }
+    const left = Math.floor((width - w) / 2);
+    for (const [x, y] of cells) filled[(oy + y) * width + left + x] = true;
   });
   return { width, height, filled };
 }
